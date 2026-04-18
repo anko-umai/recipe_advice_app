@@ -273,13 +273,78 @@ Ingredient (N) ── (1) IngredientMaster // 食材マスタ（正規化辞書�
 
 > 各選定の比較プロセスに使ったプロンプトは [`selection-prompts.md`](./selection-prompts.md) を参照。
 
-### 10.2 残る未決事項（次フェーズで決定）
+### 10.2 詳細検討事項（2026-04-18 確定）
 
-- [ ] Tailwind CSS のバージョン（v3 or v4）
-- [ ] shadcn/ui の Remix 向けセットアップ方式の最終確認
-- [ ] Supabase Auth での Google OAuth 有効化範囲（MVP時点で入れるか）
-- [ ] Cloudflare Workers でのストリーミングLLM応答の検証
-- [ ] レシート画像の保持期間デフォルト値（暫定 90 日）
-- [ ] 課金導線を見越した DB カラム・テーブル設計（plan, usage_counter 等）
-- [ ] 監視・ログ基盤（Sentry / PostHog の正式採用可否）
-- [ ] CI/CD の詳細（GitHub Actions 構成、自動デプロイのブランチ運用）
+#### ① Tailwind CSS バージョン
+- **決定**: **Tailwind CSS v4** を採用。
+- **理由**: 新規グリーンフィールドプロジェクトで互換性負債なし。ネイティブCSS変数・OKLCH色空間・ビルド高速化の恩恵。shadcn/ui は 2025年初に v4 対応済み。
+- **補足**: Remix + Vite 環境では `@tailwindcss/vite` プラグインを使用。PostCSS 構成は不要。
+
+#### ② shadcn/ui の Remix 向けセットアップ方式
+- **決定**: **Remix (React Router v7) + Vite + `@tailwindcss/vite` + shadcn CLI** で公式推奨構成。
+- **配置**: `app/components/ui/`（プロジェクトにソース配置、自由に編集可能）。
+- **初期導入コンポーネント**: Button, Input, Label, Card, Dialog, Select, Toast, Calendar, Sheet。
+- **補足**: テーマ設定は `app/styles/globals.css` に CSS 変数で記述。
+
+#### ③ Supabase Auth での Google OAuth 有効化範囲
+- **決定**: **MVP から Google OAuth を有効化**。メール/パスワード認証と併設。
+- **理由**: Supabase 側は設定のみで実装工数極小。ユーザー登録の敷居を大きく下げるため。
+- **スコープ外（v1.0 以降）**: Apple, Twitter(X), GitHub 等の他 OAuth プロバイダ。MFA も将来拡張。
+
+#### ④ Cloudflare Workers でのストリーミング LLM 応答
+- **決定**: **Phase 0 で PoC を実施**し、本採用可否を判断。
+- **検証項目**:
+  - Anthropic SDK のストリーミング応答が Workers で正しく動作するか
+  - CPU time 制限（有料プラン 30秒/50ms CPU time）の影響
+  - Subrequest 上限（有料 1,000/リクエスト）への適合
+  - Remix loader/action からのストリーミング応答互換性
+- **代替プラン**: PoC 失敗時は **Vercel (Edge Runtime または Node Runtime)** に切り替え。
+
+#### ⑤ レシート画像の保持期間
+- **決定**: **デフォルト 30 日**、ユーザー設定で変更可能に。
+- **選択肢**: `即削除` / `7日` / `30日（既定）` / `90日` / `保持（無期限）`。
+- **理由**: プライバシー最優先（レシートには店舗・購入傾向等のPIIが含まれる）。ストレージコスト削減にも寄与。
+- **実装**: Supabase のスケジュールジョブ（pg_cron）で期限切れ画像を削除。
+
+#### ⑥ 課金導線を見越した DB 設計
+- **決定**: **MVP で先行実装**（課金機能自体は未稼働でも設計を入れておく）。
+- **追加テーブル**:
+  - `plans`（id, code, name, price_jpy, features_jsonb, is_active）
+  - `subscriptions`（id, user_id, plan_id, status, period_start, period_end, provider, provider_subscription_id）※初期はレコード0件
+  - `usage_counters`（user_id, period_yyyymm, recipe_count, ocr_count, updated_at）
+- **users テーブル追加カラム**: `current_plan_id` FK（デフォルトは `plans.code='free'` を参照）。
+- **実装方針**: プラン判定は単一関数に集約し、将来 Free → Paid 切替を1箇所で管理。
+
+#### ⑦ 監視・ログ基盤
+- **決定**: **Sentry + PostHog を両方採用、Phase 2 (β) 開始時に導入**。
+- **Sentry**: エラー・例外トラッキング（Developer プラン、月5,000 events 無料）。
+- **PostHog**: プロダクト分析・ファネル可視化（Cloud Free、月100万 events 無料）。
+- **注意点**:
+  - 在庫食材名・レシート内容・レシピ本文等を誤送信しないよう、ブレッドクラム/イベントに PII フィルタを必須化。
+  - LLM プロンプト・応答は専用の内部ログに留め、Sentry/PostHog には送らない。
+
+#### ⑧ CI/CD 構成とブランチ運用
+- **決定**: **GitHub Actions（品質ゲート）+ Cloudflare Pages（自動プレビュー＆本番デプロイ）**。
+- **ブランチ戦略**:
+  - `main`: 本番反映（タグでバージョン管理）。直push禁止、PR必須。
+  - `develop`: 次期リリース統合ブランチ。
+  - `feature/*` / `fix/*` / `docs/*`: 作業ブランチ。
+- **GitHub Actions（PR時）**:
+  - Lint（ESLint）
+  - Type check（`tsc --noEmit`）
+  - Unit test（Vitest）
+  - E2E test（Playwright、主要導線のみ）
+  - Build 検証
+- **Cloudflare Pages**:
+  - `main` マージ → 本番自動デプロイ
+  - PR → プレビューURL自動発行
+- **PR テンプレート**: 関連Issue、スクショ、テスト観点を必須項目化。
+
+### 10.3 今後の検討事項（継続）
+
+- [ ] レシピ生成プロンプトの最終仕様（出力JSONスキーマ、制約条件）
+- [ ] 食材マスタの初期データ整備（500件目安、カテゴリ・別名を含む）
+- [ ] レシート店舗テンプレート（主要スーパー別フォーマット対応）
+- [ ] デザイントークン（カラー・フォント・余白）確定
+- [ ] 利用規約・プライバシーポリシーの作成
+- [ ] 障害時の通知先・オンコール体制（個人開発範囲で最小実装）
