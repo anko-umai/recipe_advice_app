@@ -49,20 +49,23 @@
   - PWA化によりホーム画面追加・オフライン閲覧（在庫/履歴のキャッシュ表示）を実現。
   - PWA経由でスマホカメラを呼び出してレシート撮影。
 
-### 3.2 想定技術スタック（候補）
-> 最終選定は技術選定フェーズで別途決定。
+### 3.2 採用技術スタック（暫定確定）
 
-| レイヤー | 候補 |
-|----------|------|
-| フロントエンド | Next.js（App Router） + TypeScript + Tailwind CSS |
-| PWA | next-pwa / Workbox |
-| バックエンド | Next.js Route Handlers / tRPC、もしくは Hono + Cloudflare Workers |
-| DB | PostgreSQL（Supabase / Neon） |
-| 認証 | Supabase Auth / Clerk / NextAuth |
-| OCR | **Google Cloud Vision API**（Document Text Detection） |
-| LLM | Anthropic Claude API（Sonnet 4.6 / Haiku 4.5） |
-| ストレージ | Supabase Storage / Cloudflare R2（レシート画像） |
-| ホスティング | Vercel / Cloudflare Pages |
+| レイヤー | 採用技術 | 備考 |
+|----------|---------|------|
+| フロントエンド | **Remix (React Router v7) + TypeScript + Tailwind CSS** | SSR・ネストルーティング活用 |
+| UI コンポーネント | **Tailwind CSS + shadcn/ui** | Radix UI ベース、プロジェクト内にソース配置 |
+| PWA | Workbox（Remix用アダプタ併用） | オフライン対応・ホーム画面追加 |
+| バックエンド | Remix Loader/Action（同一プロジェクト） | 必要に応じてサーバー関数追加 |
+| DB | **PostgreSQL (Supabase)** | Tokyoリージョン、RLS利用 |
+| 認証 | **Supabase Auth** | メール/パスワード + Google OAuth、RLSと一体運用 |
+| OCR | **Google Cloud Vision API**（Document Text Detection） | 月1,000件まで無料枠 |
+| LLM | **Anthropic Claude API（Haiku 4.5 主軸）** | 必要時のみ Sonnet 4.6 にエスカレート |
+| ストレージ | Supabase Storage | レシート画像。保持期限 90日（デフォルト） |
+| ホスティング | **Cloudflare Pages + Workers** | エッジ実行、帯域無料、MVPコスト最小化 |
+| 決済 | なし（MVP無料） | 課金導線のみDB/コード側で先行設計 |
+
+> すべてアダプタ／抽象化層を挟み、将来の差し替え容易性を確保（NFR-M-01, NFR-M-02）。
 
 ---
 
@@ -255,11 +258,28 @@ Ingredient (N) ── (1) IngredientMaster // 食材マスタ（正規化辞書�
 
 ---
 
-## 10. 未決事項（次フェーズで決定）
+## 10. 未決事項と選定結果
 
-- [ ] 技術スタック最終選定（Next.js vs. Remix、Supabase vs. Neon 等）
-- [ ] 認証プロバイダ選定
-- [ ] LLMモデル選定（Haiku 4.5 でのコスト最適化可否の検証）
-- [ ] ホスティング先選定
-- [ ] デザインシステム（Tailwind + shadcn/ui の採用可否）
-- [ ] 決済・サブスク化の有無（MVPは無料想定）
+### 10.1 選定結果（暫定確定）
+
+| 項目 | 決定 | 決定日 | 補足 |
+|------|------|--------|------|
+| 技術スタック | **Remix + Supabase** | 2026-04-18 | Next.js/Neon は見送り |
+| LLMモデル | **Claude Haiku 4.5 を主軸**（コスト最適化検証前提） | 2026-04-18 | 高度な生成のみ Sonnet 4.6 にエスカレート |
+| 認証プロバイダ | **Supabase Auth** | 2026-04-18 | RLS と一体運用、追加コスト0 |
+| ホスティング | **Cloudflare Pages + Workers** | 2026-04-18 | エッジ実行、帯域無料。DX優先時は Vercel を代替案 |
+| デザインシステム | **Tailwind CSS + shadcn/ui** | 2026-04-18 | Radix UI ベース、プロジェクト配置型 |
+| 決済・サブスク | **MVPは無料**、課金導線のみDB/コード側で先行設計 | 2026-04-18 | 有料化時は Paddle/LemonSqueezy を第一候補 |
+
+> 各選定の比較プロセスに使ったプロンプトは [`selection-prompts.md`](./selection-prompts.md) を参照。
+
+### 10.2 残る未決事項（次フェーズで決定）
+
+- [ ] Tailwind CSS のバージョン（v3 or v4）
+- [ ] shadcn/ui の Remix 向けセットアップ方式の最終確認
+- [ ] Supabase Auth での Google OAuth 有効化範囲（MVP時点で入れるか）
+- [ ] Cloudflare Workers でのストリーミングLLM応答の検証
+- [ ] レシート画像の保持期間デフォルト値（暫定 90 日）
+- [ ] 課金導線を見越した DB カラム・テーブル設計（plan, usage_counter 等）
+- [ ] 監視・ログ基盤（Sentry / PostHog の正式採用可否）
+- [ ] CI/CD の詳細（GitHub Actions 構成、自動デプロイのブランチ運用）
