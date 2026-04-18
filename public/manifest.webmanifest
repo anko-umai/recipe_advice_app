@@ -1,0 +1,10 @@
+{
+  "name": "Recipe Advice App",
+  "short_name": "RecipeAdvice",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "description": "食材管理とAIレシピ提案アプリ",
+  "icons": []
+}

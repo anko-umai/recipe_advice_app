@@ -1,0 +1,17 @@
+node_modules
+
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+build
+.react-router
+.cache
+public/build
+
+*.log
+coverage
+.vscode/*
+!.vscode/extensions.json
+.idea
